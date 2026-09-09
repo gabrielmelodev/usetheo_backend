@@ -108,7 +108,7 @@ async fn update(
     validate_parent(&state, user.id, payload.parent_folder_id, Some(id)).await?;
 
     let folder = sqlx::query_as::<_, Folder>(
-        "update folders set name = $1, parent_folder_id = $2, updated_at = now() where id = $3 returning *",
+        "update folders set name = $1, parent_folder_id = $2, updated_at = CURRENT_TIMESTAMP where id = $3 returning *",
     )
     .bind(&payload.name)
     .bind(payload.parent_folder_id)
@@ -140,7 +140,7 @@ async fn move_folder(
     validate_parent(&state, user.id, payload.parent_folder_id, Some(id)).await?;
 
     let folder = sqlx::query_as::<_, Folder>(
-        "update folders set parent_folder_id = $1, updated_at = now() where id = $2 returning *",
+        "update folders set parent_folder_id = $1, updated_at = CURRENT_TIMESTAMP where id = $2 returning *",
     )
     .bind(payload.parent_folder_id)
     .bind(id)

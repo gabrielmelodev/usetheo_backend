@@ -88,7 +88,7 @@ async fn register(
     )
     .bind(&email)
     .bind(&cpf_digits)
-    .fetch_one(&state.db)
+    .fetch_one(&state.remote_db)
     .await?;
 
     if existing > 0 {
@@ -110,7 +110,7 @@ async fn register(
     .bind(&payload.country)
     .bind(&payload.city)
     .bind(&password_hash)
-    .fetch_one(&state.db)
+    .fetch_one(&state.remote_db)
     .await?;
 
     send_verification_email(&state, &user).await;
@@ -141,7 +141,7 @@ async fn send_verification_email(state: &AppState, user: &User) {
     .bind(user.id)
     .bind(&token_hash)
     .bind(expires_at)
-    .execute(&state.db)
+    .execute(&state.remote_db)
     .await;
 
     let body = email::verification_email_body(&state.config.frontend_url, &token);
@@ -187,7 +187,7 @@ async fn issue_session(
     .bind(user_agent(headers))
     .bind(client_ip(headers))
     .bind(expires_at)
-    .execute(&state.db)
+    .execute(&state.remote_db)
     .await?;
 
     Ok(TokenPair {
@@ -210,7 +210,7 @@ async fn login(
 
     let user: Option<User> = sqlx::query_as("select * from users where email = $1")
         .bind(&email)
-        .fetch_optional(&state.db)
+        .fetch_optional(&state.remote_db)
         .await?;
 
     let user = match user {
@@ -244,7 +244,7 @@ async fn log_login_attempt(state: &AppState, email: &str, ip: &str, success: boo
     .bind(email)
     .bind(ip)
     .bind(success)
-    .execute(&state.db)
+    .execute(&state.remote_db)
     .await;
 }
 
@@ -286,7 +286,7 @@ async fn verify_2fa_login(
 
     let user: User = sqlx::query_as("select * from users where id = $1")
         .bind(user_id)
-        .fetch_optional(&state.db)
+        .fetch_optional(&state.remote_db)
         .await?
         .ok_or(AppError::Unauthorized)?;
 
@@ -315,20 +315,20 @@ async fn refresh(
            where refresh_token_hash = $1 and revoked_at is null and expires_at > now()"#,
     )
     .bind(&hash)
-    .fetch_optional(&state.db)
+    .fetch_optional(&state.remote_db)
     .await?;
 
     let (session_id, user_id) = session.ok_or(AppError::Unauthorized)?;
 
     let user: User = sqlx::query_as("select * from users where id = $1")
         .bind(user_id)
-        .fetch_one(&state.db)
+        .fetch_one(&state.remote_db)
         .await?;
 
     // Rotaciona o refresh token: revoga o antigo e cria uma nova sessão.
     sqlx::query("update sessions set revoked_at = now() where id = $1")
         .bind(session_id)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
     let tokens = issue_session(&state, &user, &headers).await?;
@@ -346,7 +346,7 @@ async fn logout(
     let hash = password::hash_token(&payload.refresh_token);
     sqlx::query("update sessions set revoked_at = now() where refresh_token_hash = $1")
         .bind(&hash)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
     Ok(Json(json!({ "message": "logout realizado" })))
@@ -355,7 +355,7 @@ async fn logout(
 async fn logout_all(State(state): State<AppState>, user: CurrentUser) -> AppResult<Json<serde_json::Value>> {
     sqlx::query("update sessions set revoked_at = now() where user_id = $1 and revoked_at is null")
         .bind(user.id)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
     audit::log(&state, Some(user.id), "logout_all", None, None, json!({})).await;
@@ -379,12 +379,12 @@ async fn verify_email(
            where token_hash = $1 and consumed_at is null and expires_at > now()"#,
     )
     .bind(&hash)
-    .fetch_optional(&state.db)
+    .fetch_optional(&state.remote_db)
     .await?;
 
     let (token_id, user_id) = row.ok_or(AppError::Validation("token inválido ou expirado".to_string()))?;
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.remote_db.begin().await?;
     sqlx::query("update email_verification_tokens set consumed_at = now() where id = $1")
         .bind(token_id)
         .execute(&mut *tx)
@@ -403,7 +403,7 @@ async fn verify_email(
 async fn resend_verification(State(state): State<AppState>, user: CurrentUser) -> AppResult<Json<serde_json::Value>> {
     let db_user: User = sqlx::query_as("select * from users where id = $1")
         .bind(user.id)
-        .fetch_one(&state.db)
+        .fetch_one(&state.remote_db)
         .await?;
 
     if db_user.email_verified_at.is_some() {
@@ -428,7 +428,7 @@ async fn forgot_password(
     // Resposta genérica sempre, para não revelar se o e-mail existe na base.
     if let Some(user) = sqlx::query_as::<_, User>("select * from users where email = $1")
         .bind(&email)
-        .fetch_optional(&state.db)
+        .fetch_optional(&state.remote_db)
         .await?
     {
         let (token, token_hash) = password::generate_opaque_token();
@@ -440,7 +440,7 @@ async fn forgot_password(
         .bind(user.id)
         .bind(&token_hash)
         .bind(expires_at)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
         let body = email::password_reset_email_body(&state.config.frontend_url, &token);
@@ -471,14 +471,14 @@ async fn reset_password(
            where token_hash = $1 and consumed_at is null and expires_at > now()"#,
     )
     .bind(&hash)
-    .fetch_optional(&state.db)
+    .fetch_optional(&state.remote_db)
     .await?;
 
     let (token_id, user_id) = row.ok_or(AppError::Validation("token inválido ou expirado".to_string()))?;
 
     let new_hash = password::hash_password(&payload.password).map_err(AppError::Internal)?;
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.remote_db.begin().await?;
     sqlx::query("update password_reset_tokens set consumed_at = now() where id = $1")
         .bind(token_id)
         .execute(&mut *tx)
@@ -516,7 +516,7 @@ async fn change_password(
 
     let db_user: User = sqlx::query_as("select * from users where id = $1")
         .bind(user.id)
-        .fetch_one(&state.db)
+        .fetch_one(&state.remote_db)
         .await?;
 
     if !password::verify_password(&payload.current_password, &db_user.password_hash) {
@@ -528,7 +528,7 @@ async fn change_password(
     sqlx::query("update users set password_hash = $1, must_change_password = false where id = $2")
         .bind(&new_hash)
         .bind(user.id)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
     audit::log(&state, Some(user.id), "password.changed", None, None, json!({})).await;
@@ -539,7 +539,7 @@ async fn change_password(
 async fn setup_2fa(State(state): State<AppState>, user: CurrentUser) -> AppResult<Json<serde_json::Value>> {
     let db_user: User = sqlx::query_as("select * from users where id = $1")
         .bind(user.id)
-        .fetch_one(&state.db)
+        .fetch_one(&state.remote_db)
         .await?;
 
     let secret = totp::generate_secret();
@@ -547,7 +547,7 @@ async fn setup_2fa(State(state): State<AppState>, user: CurrentUser) -> AppResul
     sqlx::query("update users set totp_secret = $1, totp_enabled = false where id = $2")
         .bind(&secret)
         .bind(user.id)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
     let uri = totp::otpauth_uri(&secret, &db_user.email, "Theo");
@@ -567,7 +567,7 @@ async fn enable_2fa(
 ) -> AppResult<Json<serde_json::Value>> {
     let secret: Option<String> = sqlx::query_scalar("select totp_secret from users where id = $1")
         .bind(user.id)
-        .fetch_one(&state.db)
+        .fetch_one(&state.remote_db)
         .await?;
 
     let secret = secret.ok_or(AppError::Validation("execute /2fa/setup primeiro".to_string()))?;
@@ -578,7 +578,7 @@ async fn enable_2fa(
 
     sqlx::query("update users set totp_enabled = true where id = $1")
         .bind(user.id)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
     audit::log(&state, Some(user.id), "2fa.enabled", None, None, json!({})).await;
@@ -593,7 +593,7 @@ async fn disable_2fa(
 ) -> AppResult<Json<serde_json::Value>> {
     let secret: Option<String> = sqlx::query_scalar("select totp_secret from users where id = $1")
         .bind(user.id)
-        .fetch_one(&state.db)
+        .fetch_one(&state.remote_db)
         .await?;
 
     let secret = secret.ok_or(AppError::Validation("2FA não está habilitado".to_string()))?;
@@ -604,7 +604,7 @@ async fn disable_2fa(
 
     sqlx::query("update users set totp_enabled = false, totp_secret = null where id = $1")
         .bind(user.id)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
     audit::log(&state, Some(user.id), "2fa.disabled", None, None, json!({})).await;
@@ -630,7 +630,7 @@ async fn list_sessions(State(state): State<AppState>, user: CurrentUser) -> AppR
            order by last_used_at desc"#,
     )
     .bind(user.id)
-    .fetch_all(&state.db)
+    .fetch_all(&state.remote_db)
     .await?;
 
     Ok(Json(sessions))
@@ -644,7 +644,7 @@ async fn revoke_session(
     sqlx::query("update sessions set revoked_at = now() where id = $1 and user_id = $2")
         .bind(id)
         .bind(user.id)
-        .execute(&state.db)
+        .execute(&state.remote_db)
         .await?;
 
     Ok(Json(json!({ "message": "sessão revogada" })))

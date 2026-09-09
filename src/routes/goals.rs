@@ -47,8 +47,8 @@ async fn compute_progress(state: &AppState, goal: &Goal) -> AppResult<f64> {
     let value: Option<f64> = match goal.metric.as_str() {
         "minutes" => {
             sqlx::query_scalar(
-                "select coalesce(sum(minutes), 0)::float8 from study_logs
-                 where user_id = $1 and studied_on >= $2 and ($3::uuid is null or exam_id = $3)",
+                "select coalesce(sum(minutes), 0) from study_logs
+                 where user_id = $1 and studied_on >= $2 and ($3 is null or exam_id = $3)",
             )
             .bind(goal.user_id)
             .bind(period_start)
@@ -58,8 +58,8 @@ async fn compute_progress(state: &AppState, goal: &Goal) -> AppResult<f64> {
         }
         "questions" => {
             sqlx::query_scalar(
-                "select coalesce(sum(questions_total), 0)::float8 from study_logs
-                 where user_id = $1 and studied_on >= $2 and ($3::uuid is null or exam_id = $3)",
+                "select coalesce(sum(questions_total), 0) from study_logs
+                 where user_id = $1 and studied_on >= $2 and ($3 is null or exam_id = $3)",
             )
             .bind(goal.user_id)
             .bind(period_start)
@@ -69,8 +69,8 @@ async fn compute_progress(state: &AppState, goal: &Goal) -> AppResult<f64> {
         }
         "reviews" => {
             sqlx::query_scalar(
-                "select count(*)::float8 from topic_reviews r join exam_topics t on t.id = r.topic_id
-                 where r.user_id = $1 and r.completed_at >= $2 and ($3::uuid is null or t.exam_id = $3)",
+                "select count(*) from topic_reviews r join exam_topics t on t.id = r.topic_id
+                 where r.user_id = $1 and r.completed_at >= $2 and ($3 is null or t.exam_id = $3)",
             )
             .bind(goal.user_id)
             .bind(period_start.and_hms_opt(0, 0, 0).unwrap().and_utc())
@@ -80,8 +80,8 @@ async fn compute_progress(state: &AppState, goal: &Goal) -> AppResult<f64> {
         }
         "topics" => {
             sqlx::query_scalar(
-                "select count(distinct topic_id)::float8 from study_logs
-                 where user_id = $1 and studied_on >= $2 and ($3::uuid is null or exam_id = $3)",
+                "select count(distinct topic_id) from study_logs
+                 where user_id = $1 and studied_on >= $2 and ($3 is null or exam_id = $3)",
             )
             .bind(goal.user_id)
             .bind(period_start)
@@ -139,7 +139,7 @@ async fn update(
 ) -> AppResult<Json<Goal>> {
     validate(&payload)?;
     let goal = sqlx::query_as::<_, Goal>(
-        "update goals set period = $1, metric = $2, target = $3, exam_id = $4, updated_at = now()
+        "update goals set period = $1, metric = $2, target = $3, exam_id = $4, updated_at = CURRENT_TIMESTAMP
          where id = $5 and user_id = $6 returning *",
     )
     .bind(&payload.period)

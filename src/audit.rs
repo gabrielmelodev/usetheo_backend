@@ -18,7 +18,7 @@ pub async fn log(
     .bind(ip)
     .bind(user_agent)
     .bind(metadata)
-    .execute(&state.db)
+    .execute(&state.remote_db)
     .await;
 
     if let Err(e) = result {

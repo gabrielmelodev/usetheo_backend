@@ -11,6 +11,11 @@ pub async fn send_mail(
     subject: &str,
     body: &str,
 ) -> anyhow::Result<()> {
+    if !config.email_enabled {
+        tracing::debug!("[email] desativado por EMAIL_ENABLED=false; destinatário={}", to);
+        return Ok(());
+    }
+
     // ============================================================
     // MODO DESENVOLVIMENTO
     // ============================================================

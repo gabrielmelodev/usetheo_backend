@@ -16,8 +16,8 @@ pub struct Exam {
     pub continuous_mode: Option<String>, // semanal | ciclo
     pub max_session_minutes: Option<i32>,
 
-    pub review_intervals_days: Option<Vec<i32>>,
-    pub excluded_weekdays: Vec<i32>,
+    pub review_intervals_days: Option<serde_json::Value>,
+    pub excluded_weekdays: serde_json::Value,
 
     #[serde(rename = "created_at")]
     pub inserted_at: DateTime<Utc>,
@@ -105,4 +105,21 @@ pub struct ManualScheduleEntry {
 
     #[serde(rename = "created_at")]
     pub inserted_at: DateTime<Utc>,
+}
+
+impl Exam {
+    pub fn review_intervals(&self) -> Vec<i32> {
+        self.review_intervals_days
+            .as_ref()
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|x| x.as_i64().map(|n| n as i32)).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn excluded_weekdays_vec(&self) -> Vec<i32> {
+        self.excluded_weekdays
+            .as_array()
+            .map(|a| a.iter().filter_map(|x| x.as_i64().map(|n| n as i32)).collect())
+            .unwrap_or_default()
+    }
 }

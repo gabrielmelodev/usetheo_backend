@@ -9,7 +9,7 @@ pub struct Note {
     pub deck_id: Uuid,
     pub note_type_id: Uuid,
     pub fields: serde_json::Value, // objeto {campo: valor}
-    pub tags: Vec<String>,
+    pub tags: serde_json::Value,
     pub inserted_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

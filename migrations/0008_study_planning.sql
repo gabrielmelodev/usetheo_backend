@@ -1,0 +1,18 @@
+-- ============================================================
+-- Theo Local
+-- 0008_study_planning.sql
+--
+-- O schema de planejamento já é criado por:
+-- 0004_local_schema.sql
+--
+-- Tabelas contempladas pelo 0004:
+--   exams
+--   exam_subjects
+--   exam_topics
+--   study_logs
+--   topic_reviews
+--   manual_schedule_entries
+--
+-- Esta migration é mantida para preservar a sequência
+-- histórica das migrations.
+-- ============================================================

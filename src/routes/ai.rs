@@ -131,8 +131,8 @@ async fn save_theo_memory(
             gen_random_uuid(),
             $1,
             $2,
-            NOW(),
-            NOW()
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
         )
         "#,
     )
@@ -316,7 +316,7 @@ async fn recommendations(
                         ON t2.id = l2.topic_id
                     WHERE t2.subject_id = s.id
                       AND l2.studied_on >=
-                          CURRENT_DATE - INTERVAL '7 days'
+                          date(CURRENT_TIMESTAMP, '-7 days')
                 ),
                 0
             ) AS minutes_7d,
@@ -1626,7 +1626,7 @@ async fn get_subject_signals(
                         ON t2.id = l2.topic_id
                     WHERE t2.subject_id = s.id
                       AND l2.studied_on >=
-                          CURRENT_DATE - INTERVAL '7 days'
+                          date(CURRENT_TIMESTAMP, '-7 days')
                 ),
                 0
             ) AS minutes_7d

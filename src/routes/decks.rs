@@ -243,7 +243,7 @@ async fn update(
              is_public = coalesce($14, is_public),
              review_cards_per_day = $15,
              is_template = $16,
-             updated_at = now()
+             updated_at = CURRENT_TIMESTAMP
            where id = $17
            returning *"#,
     )
@@ -291,7 +291,7 @@ async fn move_deck(
     validate_references(&state, user.id, payload.folder_id, None, Some(id)).await?;
 
     let deck = sqlx::query_as::<_, Deck>(
-        "update decks set folder_id = $1, updated_at = now() where id = $2 returning *",
+        "update decks set folder_id = $1, updated_at = CURRENT_TIMESTAMP where id = $2 returning *",
     )
     .bind(payload.folder_id)
     .bind(id)
@@ -316,17 +316,18 @@ async fn bulk_move(
     Json(payload): Json<BulkMovePayload>,
 ) -> AppResult<Json<serde_json::Value>> {
     validate_references(&state, user.id, payload.folder_id, None, None).await?;
-    let updated: i64 = sqlx::query_scalar(
-        "with moved as (update decks set folder_id = $1, updated_at = now()
-           where user_id = $2 and id = any($3) returning 1)
-         select count(*) from moved",
-    )
-    .bind(payload.folder_id)
-    .bind(user.id)
-    .bind(&payload.deck_ids)
-    .fetch_one(&state.db)
-    .await?;
-
+    let mut updated = 0i64;
+    for deck_id in payload.deck_ids {
+        let result = sqlx::query(
+            "update decks set folder_id = $1, updated_at = CURRENT_TIMESTAMP where user_id = $2 and id = $3",
+        )
+        .bind(payload.folder_id)
+        .bind(user.id)
+        .bind(deck_id)
+        .execute(&state.db)
+        .await?;
+        updated += result.rows_affected() as i64;
+    }
     Ok(Json(json!({ "moved": updated })))
 }
 
@@ -367,15 +368,15 @@ async fn bulk_delete(
     user: CurrentUser,
     Json(payload): Json<BulkDeletePayload>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let deleted: i64 = sqlx::query_scalar(
-        "with removed as (delete from decks where user_id = $1 and id = any($2) returning 1)
-         select count(*) from removed",
-    )
-    .bind(user.id)
-    .bind(&payload.deck_ids)
-    .fetch_one(&state.db)
-    .await?;
-
+    let mut deleted = 0i64;
+    for deck_id in payload.deck_ids {
+        let result = sqlx::query("delete from decks where user_id = $1 and id = $2")
+            .bind(user.id)
+            .bind(deck_id)
+            .execute(&state.db)
+            .await?;
+        deleted += result.rows_affected() as i64;
+    }
     Ok(Json(json!({ "deleted": deleted })))
 }
 
@@ -455,7 +456,7 @@ async fn copy_deck(
 
         for card in cards {
             sqlx::query(
-                "insert into cards (user_id, note_id, deck_id, template_index, due) values ($1, $2, $3, $4, now())",
+                "insert into cards (user_id, note_id, deck_id, template_index, due) values ($1, $2, $3, $4, CURRENT_TIMESTAMP)",
             )
             .bind(user.id)
             .bind(new_note_id)
@@ -492,7 +493,7 @@ pub async fn admin_set_template(
     // `is_official` é o que o catálogo de matérias (/materias) realmente lê — mantemos as
     // duas colunas sincronizadas aqui pra "Tornar modelo" no admin valer nos dois lugares.
     let deck = sqlx::query_as::<_, Deck>(
-        "update decks set is_template = $1, is_official = $1, folder_id = coalesce($2, folder_id), updated_at = now()
+        "update decks set is_template = $1, is_official = $1, folder_id = coalesce($2, folder_id), updated_at = CURRENT_TIMESTAMP
          where id = $3 and user_id = $4 returning *",
     )
     .bind(is_template)

@@ -44,67 +44,72 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::from_env();
 
     println!("[OK] Configuração carregada.");
+    println!("[INFO] Host: {}", config.host);
     println!("[INFO] Porta: {}", config.port);
+    println!("[INFO] Dados de estudo: SQLite local | Auth/Sync: PostgreSQL remoto");
 
     // ============================================================
-    // 2. BANCO DE DADOS
+    // 2. BANCOS DE DADOS
     // ============================================================
 
-    println!("[2/6] Conectando ao PostgreSQL...");
+    println!("[2/6] Conectando ao SQLite local...");
 
-    let db = match db::connect(&config.database_url).await {
+    let db = match db::connect_local(&config.database_url).await {
         Ok(db) => {
-            println!("[OK] PostgreSQL conectado com sucesso.");
+            println!("[OK] SQLite local conectado com sucesso.");
             db
         }
-
         Err(error) => {
             eprintln!();
             eprintln!("========================================");
-            eprintln!("      ERRO AO CONECTAR AO POSTGRESQL");
+            eprintln!("        ERRO AO CONECTAR AO SQLITE");
             eprintln!("========================================");
-            eprintln!();
-            eprintln!("O erro aconteceu antes das migrations.");
-            eprintln!();
-            eprintln!("Detalhes:");
-            eprintln!("{error:#}");
-            eprintln!();
-            eprintln!("Verifique:");
-            eprintln!("1. PostgreSQL está executando.");
-            eprintln!("2. DATABASE_URL está correta.");
-            eprintln!("3. Usuário e senha estão corretos.");
-            eprintln!("4. O banco informado existe.");
-            eprintln!("5. PostgreSQL está aceitando conexões.");
-            eprintln!("6. lc_messages está configurado para UTF-8/C.");
-            eprintln!();
+            eprintln!("Detalhes: {error:#}");
+            return Err(error.into());
+        }
+    };
 
+    println!("[2/6] Conectando ao PostgreSQL remoto (auth/sync)...");
+
+    let remote_db = match db::connect_remote(&config.remote_database_url).await {
+        Ok(db) => {
+            println!("[OK] PostgreSQL remoto conectado.");
+            db
+        }
+        Err(error) => {
+            eprintln!();
+            eprintln!("========================================");
+            eprintln!("   ERRO AO CONECTAR AO POSTGRESQL REMOTO");
+            eprintln!("========================================");
+            eprintln!("O SQLite local continua configurado, mas login/cadastro/sync precisam do PostgreSQL.");
+            eprintln!("Detalhes: {error:#}");
             return Err(error.into());
         }
     };
 
     // ============================================================
-    // 3. MIGRATIONS
+    // 3. MIGRATIONS LOCAIS
     // ============================================================
 
-    println!("[3/6] Executando migrations...");
+    println!("[3/6] Executando migrations do SQLite local...");
 
     match sqlx::migrate!("./migrations").run(&db).await {
-        Ok(_) => {
-            println!("[OK] Migrations executadas com sucesso.");
-        }
-
+        Ok(_) => println!("[OK] Migrations locais executadas com sucesso."),
         Err(error) => {
-            eprintln!();
             eprintln!("========================================");
-            eprintln!("          ERRO NAS MIGRATIONS");
+            eprintln!("       ERRO NAS MIGRATIONS LOCAIS");
             eprintln!("========================================");
-            eprintln!();
             eprintln!("{error:#}");
-            eprintln!();
-
             return Err(error.into());
         }
     }
+
+    println!("[3/6] Garantindo estrutura de sincronização no PostgreSQL remoto...");
+    if let Err(error) = sqlx::migrate!("./migrations_pg").run(&remote_db).await {
+        eprintln!("[ERRO] Falha na migration de sincronização remota: {error:#}");
+        return Err(error.into());
+    }
+    println!("[OK] Estrutura remota de sincronização pronta.");
 
     // ============================================================
     // 4. ESTADO DA APLICAÇÃO
@@ -114,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState {
         db,
+        remote_db,
         config: Arc::new(config.clone()),
         login_attempts: Arc::new(DashMap::new()),
     };
@@ -270,10 +276,11 @@ async fn main() -> anyhow::Result<()> {
     println!("[6/6] Iniciando servidor...");
 
     let listener =
-        tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
+        tokio::net::TcpListener::bind((config.host.as_str(), config.port)).await?;
 
     tracing::info!(
-        "theo backend (rust) ouvindo em http://0.0.0.0:{}",
+        "theo backend (rust) ouvindo em http://{}:{}",
+        config.host,
         config.port
     );
 
@@ -281,7 +288,7 @@ async fn main() -> anyhow::Result<()> {
     println!("========================================");
     println!("       THEO BACKEND ONLINE");
     println!("========================================");
-    println!("Servidor: http://0.0.0.0:{}", config.port);
+    println!("Servidor: http://{}:{}", config.host, config.port);
     println!();
     println!("Endpoints principais:");
     println!("  POST /api/auth/...");

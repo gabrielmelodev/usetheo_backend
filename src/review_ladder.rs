@@ -8,10 +8,8 @@ use uuid::Uuid;
 const DEFAULT_LADDER_DAYS: [i32; 4] = [1, 7, 30, 90];
 
 fn ladder(exam: &Exam) -> Vec<i32> {
-    match &exam.review_intervals_days {
-        Some(days) if !days.is_empty() => days.clone(),
-        _ => DEFAULT_LADDER_DAYS.to_vec(),
-    }
+    let days = exam.review_intervals();
+    if days.is_empty() { DEFAULT_LADDER_DAYS.to_vec() } else { days }
 }
 
 /// Calcula a data ideal do próximo degrau e aplica as regras de bloqueio:
@@ -36,7 +34,7 @@ fn next_scheduled_date(exam: &Exam, from: NaiveDate, interval_days: i32) -> Opti
     // mas sem nunca invadir o sprint/pós-prova checado acima.
     for _ in 0..14 {
         let weekday = candidate.weekday().num_days_from_sunday() as i32;
-        if !exam.excluded_weekdays.contains(&weekday) {
+        if !exam.excluded_weekdays_vec().contains(&weekday) {
             return Some(candidate);
         }
         candidate += Duration::days(1);
@@ -92,7 +90,7 @@ pub async fn complete_and_advance(
     current_step: i32,
 ) -> AppResult<()> {
     sqlx::query(
-        "update topic_reviews set completed_at = now(), completed_study_log_id = $1 where id = $2",
+        "update topic_reviews set completed_at = CURRENT_TIMESTAMP, completed_study_log_id = $1 where id = $2",
     )
     .bind(completed_study_log_id)
     .bind(review_id)

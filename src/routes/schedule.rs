@@ -59,7 +59,7 @@ async fn generate_deadline_schedule(
         let mut d = start;
         while d < end {
             let weekday = d.weekday().num_days_from_sunday() as i32;
-            if !exam.excluded_weekdays.contains(&weekday) {
+            if !exam.excluded_weekdays_vec().contains(&weekday) {
                 days.push(d);
             }
             d += Duration::days(1);
@@ -210,7 +210,7 @@ async fn continuous_schedule(
     } else {
         Ok(Json(json!({
             "mode": "semanal",
-            "week": build_weekly_grid(&allocations, &exam.excluded_weekdays),
+            "week": build_weekly_grid(&allocations, &exam.excluded_weekdays_vec()),
         })))
     }
 }
@@ -431,7 +431,7 @@ async fn schedule_check(State(state): State<AppState>, user: CurrentUser, Path(i
         let logged: i64 = sqlx::query_scalar(
             r#"select count(*) from study_logs
                where exam_id = $1 and user_id = $2 and studied_on = $3
-                 and ($4::uuid is null or topic_id = $4)"#,
+                 and ($4 is null or topic_id = $4)"#,
         )
         .bind(id)
         .bind(user.id)

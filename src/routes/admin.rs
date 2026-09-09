@@ -61,28 +61,15 @@ async fn platform_stats(
     State(state): State<AppState>,
     _admin: AdminUser,
 ) -> AppResult<Json<PlatformStats>> {
-    let stats = sqlx::query_as::<_, PlatformStats>(
-        r#"
-        SELECT
-            (SELECT COUNT(*) FROM users) AS total_users,
-
-            (SELECT COUNT(*) FROM decks) AS total_decks,
-
-            (
-                SELECT COUNT(*)
-                FROM decks
-                WHERE is_template = TRUE
-            ) AS total_template_decks,
-
-            (SELECT COUNT(*) FROM cards) AS total_cards,
-
-            (SELECT COUNT(*) FROM exams) AS total_exams
-        "#,
+    let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.remote_db)
+        .await?;
+    let (total_decks, total_template_decks, total_cards, total_exams): (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM decks), (SELECT COUNT(*) FROM decks WHERE is_template = TRUE), (SELECT COUNT(*) FROM cards), (SELECT COUNT(*) FROM exams)"
     )
     .fetch_one(&state.db)
     .await?;
-
-    Ok(Json(stats))
+    Ok(Json(PlatformStats { total_users, total_decks, total_template_decks, total_cards, total_exams }))
 }
 
 // ============================================================
@@ -100,7 +87,7 @@ async fn list_users(
         ORDER BY inserted_at DESC
         "#,
     )
-    .fetch_all(&state.db)
+    .fetch_all(&state.remote_db)
     .await?;
 
     let users = users
@@ -164,13 +151,13 @@ async fn set_role(
         UPDATE users
         SET
             role = $1,
-            updated_at = NOW()
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
         "#,
     )
     .bind(&role)
     .bind(id)
-    .execute(&state.db)
+    .execute(&state.remote_db)
     .await?;
 
     if result.rows_affected() == 0 {
@@ -203,7 +190,6 @@ struct AdminDeckRow {
 #[derive(Debug, sqlx::FromRow)]
 struct DeckAdminInfo {
     deck_id: Uuid,
-    owner_email: String,
     total_cards: i64,
 }
 
@@ -242,22 +228,22 @@ async fn list_all_decks(
 
     let admin_info: Vec<DeckAdminInfo> = sqlx::query_as::<_, DeckAdminInfo>(
         r#"
-        SELECT
-            d.id AS deck_id,
-            u.email AS owner_email,
-            COUNT(c.id) AS total_cards
+        SELECT d.id AS deck_id, COUNT(c.id) AS total_cards
         FROM decks d
-        INNER JOIN users u
-            ON u.id = d.user_id
-        LEFT JOIN cards c
-            ON c.deck_id = d.id
-        GROUP BY
-            d.id,
-            u.email
+        LEFT JOIN cards c ON c.deck_id = d.id
+        GROUP BY d.id
         "#,
     )
     .fetch_all(&state.db)
     .await?;
+
+    let remote_users: Vec<User> = sqlx::query_as("SELECT * FROM users")
+        .fetch_all(&state.remote_db)
+        .await?;
+    let emails_by_user: std::collections::HashMap<Uuid, String> = remote_users
+        .into_iter()
+        .map(|u| (u.id, u.email))
+        .collect();
 
     // --------------------------------------------------------
     // 3. Indexa as informações por deck_id
@@ -278,6 +264,7 @@ async fn list_all_decks(
         .into_iter()
         .map(|deck| {
             let info = info_by_deck.get(&deck.id);
+            let owner_id = deck.user_id;
 
             AdminDeckRow {
                 deck: DeckResponse {
@@ -287,8 +274,9 @@ async fn list_all_decks(
                         .unwrap_or(0),
                 },
 
-                owner_email: info
-                    .map(|value| value.owner_email.clone())
+                owner_email: emails_by_user
+                    .get(&owner_id)
+                    .cloned()
                     .unwrap_or_else(|| "desconhecido".to_string()),
             }
         })

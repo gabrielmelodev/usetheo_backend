@@ -95,7 +95,7 @@ async fn start(State(state): State<AppState>, user: CurrentUser, Json(payload): 
 
     let timer: ActiveTimer = sqlx::query_as(
         "insert into active_timers (user_id, exam_id, topic_id, category, running_since)
-         values ($1, $2, $3, $4, now()) returning *",
+         values ($1, $2, $3, $4, CURRENT_TIMESTAMP) returning *",
     )
     .bind(user.id)
     .bind(payload.exam_id)
@@ -140,7 +140,7 @@ async fn resume(State(state): State<AppState>, user: CurrentUser) -> AppResult<J
     }
 
     let updated: ActiveTimer = sqlx::query_as(
-        "update active_timers set running_since = now() where user_id = $1 returning *",
+        "update active_timers set running_since = CURRENT_TIMESTAMP where user_id = $1 returning *",
     )
     .bind(user.id)
     .fetch_one(&state.db)

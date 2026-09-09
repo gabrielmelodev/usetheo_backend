@@ -1,74 +1,75 @@
-create extension if not exists "pgcrypto";
-
-create table users (
-    id uuid primary key default gen_random_uuid(),
-    first_name varchar(100) not null,
-    last_name varchar(100) not null,
-    email varchar(255) not null unique,
-    cpf varchar(14) not null unique,
-    country varchar(100) not null,
-    city varchar(100) not null,
-    password_hash text not null,
-    email_verified_at timestamptz,
-    must_change_password boolean not null default false,
-    totp_secret text,
-    totp_enabled boolean not null default false,
-    role varchar(20) not null default 'user',
-    inserted_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    cpf TEXT NOT NULL UNIQUE,
+    country TEXT NOT NULL,
+    city TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    email_verified_at TEXT,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
+    totp_secret TEXT,
+    totp_enabled INTEGER NOT NULL DEFAULT 0,
+    role TEXT NOT NULL DEFAULT 'user',
+    inserted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-create table email_verification_tokens (
-    id uuid primary key default gen_random_uuid(),
-    user_id uuid not null references users(id) on delete cascade,
-    token_hash text not null unique,
-    expires_at timestamptz not null,
-    consumed_at timestamptz,
-    inserted_at timestamptz not null default now()
+CREATE TABLE email_verification_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    consumed_at TEXT,
+    inserted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-create table password_reset_tokens (
-    id uuid primary key default gen_random_uuid(),
-    user_id uuid not null references users(id) on delete cascade,
-    token_hash text not null unique,
-    expires_at timestamptz not null,
-    consumed_at timestamptz,
-    inserted_at timestamptz not null default now()
+CREATE TABLE password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    consumed_at TEXT,
+    inserted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-create table sessions (
-    id uuid primary key default gen_random_uuid(),
-    user_id uuid not null references users(id) on delete cascade,
-    refresh_token_hash text not null unique,
-    device_label varchar(255),
-    user_agent text,
-    ip_address varchar(64),
-    last_used_at timestamptz not null default now(),
-    revoked_at timestamptz,
-    expires_at timestamptz not null,
-    inserted_at timestamptz not null default now()
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token_hash TEXT NOT NULL UNIQUE,
+    device_label TEXT,
+    user_agent TEXT,
+    ip_address TEXT,
+    last_used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TEXT,
+    expires_at TEXT NOT NULL,
+    inserted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-create index sessions_user_id_idx on sessions(user_id);
+CREATE INDEX sessions_user_id_idx
+    ON sessions(user_id);
 
-create table audit_logs (
-    id uuid primary key default gen_random_uuid(),
-    user_id uuid references users(id) on delete set null,
-    action varchar(100) not null,
-    ip_address varchar(64),
-    user_agent text,
-    metadata jsonb not null default '{}'::jsonb,
-    inserted_at timestamptz not null default now()
+CREATE TABLE audit_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    inserted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-create index audit_logs_user_id_idx on audit_logs(user_id);
+CREATE INDEX audit_logs_user_id_idx
+    ON audit_logs(user_id);
 
-create table login_attempts (
-    id uuid primary key default gen_random_uuid(),
-    email varchar(255) not null,
-    ip_address varchar(64) not null,
-    success boolean not null,
-    inserted_at timestamptz not null default now()
+CREATE TABLE login_attempts (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    ip_address TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    inserted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-create index login_attempts_lookup_idx on login_attempts(email, inserted_at);
+CREATE INDEX login_attempts_lookup_idx
+    ON login_attempts(email, inserted_at);

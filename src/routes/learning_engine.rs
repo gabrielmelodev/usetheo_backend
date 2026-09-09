@@ -31,7 +31,7 @@ async fn recommendations(State(state): State<AppState>, user: CurrentUser) -> Ap
              coalesce(sum(l.questions_correct), 0) as q_correct,
              coalesce((select sum(l2.minutes) from study_logs l2
                        join exam_topics t2 on t2.id = l2.topic_id
-                       where t2.subject_id = s.id and l2.studied_on >= current_date - interval '7 days'), 0) as minutes_7d,
+                       where t2.subject_id = s.id and l2.studied_on >= date(CURRENT_TIMESTAMP, '-7 days')), 0) as minutes_7d,
              count(distinct t.id) as topics_total
            from exam_subjects s
            join exams e on e.id = s.exam_id

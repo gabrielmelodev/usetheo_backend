@@ -38,11 +38,11 @@ async fn index(State(state): State<AppState>, user: CurrentUser, Query(q): Query
     let questions: Vec<Question> = sqlx::query_as(
         r#"select * from questions
            where user_id = $1
-             and ($2::uuid is null or exam_id = $2)
-             and ($3::uuid is null or subject_id = $3)
-             and ($4::uuid is null or topic_id = $4)
-             and ($5::text is null or banca ilike '%' || $5 || '%')
-             and ($6::text is null or difficulty = $6)
+             and ($2 is null or exam_id = $2)
+             and ($3 is null or subject_id = $3)
+             and ($4 is null or topic_id = $4)
+             and ($5 is null or lower(banca) like '%' || lower($5) || '%')
+             and ($6 is null or difficulty = $6)
            order by inserted_at desc"#,
     )
     .bind(user.id)
@@ -167,7 +167,7 @@ async fn update(
         r#"update questions set
              exam_id = $1, subject_id = $2, topic_id = $3, banca = $4, source = $5, year = $6,
              question_type = $7, statement = $8, alternatives = $9, correct_alternative_id = $10,
-             explanation = $11, difficulty = $12, updated_at = now()
+             explanation = $11, difficulty = $12, updated_at = CURRENT_TIMESTAMP
            where id = $13 returning *"#,
     )
     .bind(payload.exam_id)
@@ -266,7 +266,7 @@ async fn stats(State(state): State<AppState>, user: CurrentUser, Query(q): Query
         r#"select count(*), count(*) filter (where a.is_correct)
            from question_attempts a
            join questions qq on qq.id = a.question_id
-           where a.user_id = $1 and ($2::uuid is null or qq.exam_id = $2)"#,
+           where a.user_id = $1 and ($2 is null or qq.exam_id = $2)"#,
     )
     .bind(user.id)
     .bind(q.exam_id)
@@ -278,7 +278,7 @@ async fn stats(State(state): State<AppState>, user: CurrentUser, Query(q): Query
            from question_attempts a
            join questions qq on qq.id = a.question_id
            left join exam_subjects s on s.id = qq.subject_id
-           where a.user_id = $1 and ($2::uuid is null or qq.exam_id = $2)
+           where a.user_id = $1 and ($2 is null or qq.exam_id = $2)
            group by s.name"#,
     )
     .bind(user.id)
@@ -290,7 +290,7 @@ async fn stats(State(state): State<AppState>, user: CurrentUser, Query(q): Query
         r#"select qq.banca, count(*), count(*) filter (where a.is_correct)
            from question_attempts a
            join questions qq on qq.id = a.question_id
-           where a.user_id = $1 and ($2::uuid is null or qq.exam_id = $2)
+           where a.user_id = $1 and ($2 is null or qq.exam_id = $2)
            group by qq.banca"#,
     )
     .bind(user.id)

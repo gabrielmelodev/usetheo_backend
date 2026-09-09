@@ -1,24 +1,38 @@
--- Study timer
--- Stores the current timer state for each user/session.
+-- ============================================================
+-- 0009_timer.sql
+-- Theo Local - SQLite
+-- ============================================================
 
-create table study_timers (
-    user_id uuid primary key references users(id) on delete cascade,
-    exam_id uuid not null references exams(id) on delete cascade,
-    topic_id uuid not null references exam_topics(id) on delete cascade,
-    session_id uuid not null,
-    elapsed_seconds bigint not null default 0,
-    running boolean not null default false,
-    started_at timestamptz,
-    updated_at timestamptz not null default now(),
-    category text not null default 'teoria',
-    running_since timestamptz
+CREATE TABLE IF NOT EXISTS study_timers (
+    user_id BLOB PRIMARY KEY
+        REFERENCES users(id) ON DELETE CASCADE,
+
+    exam_id BLOB NOT NULL
+        REFERENCES exams(id) ON DELETE CASCADE,
+
+    topic_id BLOB NOT NULL
+        REFERENCES exam_topics(id) ON DELETE CASCADE,
+
+    session_id BLOB NOT NULL,
+
+    elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+
+    running INTEGER NOT NULL DEFAULT 0,
+
+    started_at TEXT,
+
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    category TEXT NOT NULL DEFAULT 'teoria',
+
+    running_since TEXT
 );
 
-create index study_timers_exam_id_idx
-    on study_timers(exam_id);
+CREATE INDEX IF NOT EXISTS study_timers_exam_id_idx
+    ON study_timers(exam_id);
 
-create index study_timers_topic_id_idx
-    on study_timers(topic_id);
+CREATE INDEX IF NOT EXISTS study_timers_topic_id_idx
+    ON study_timers(topic_id);
 
-create index study_timers_session_id_idx
-    on study_timers(session_id);
+CREATE INDEX IF NOT EXISTS study_timers_session_id_idx
+    ON study_timers(session_id);

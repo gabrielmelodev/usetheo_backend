@@ -41,7 +41,7 @@ async fn queue(
         }
 
         sqlx::query_as(
-            "select * from cards where user_id = $1 and deck_id = $2 and due <= now() order by due limit $3",
+            "select * from cards where user_id = $1 and deck_id = $2 and due <= CURRENT_TIMESTAMP order by due limit $3",
         )
         .bind(user.id)
         .bind(deck_id)
@@ -49,7 +49,7 @@ async fn queue(
         .fetch_all(&state.db)
         .await?
     } else {
-        sqlx::query_as("select * from cards where user_id = $1 and due <= now() order by due limit $2")
+        sqlx::query_as("select * from cards where user_id = $1 and due <= CURRENT_TIMESTAMP order by due limit $2")
             .bind(user.id)
             .bind(limit)
             .fetch_all(&state.db)
@@ -87,7 +87,7 @@ async fn submit(
 
     sqlx::query(
         r#"update cards set queue = $1, due = $2, interval_days = $3, ease_factor = $4,
-           repetitions = $5, lapses = $6, updated_at = now() where id = $7"#,
+           repetitions = $5, lapses = $6, updated_at = CURRENT_TIMESTAMP where id = $7"#,
     )
     .bind(&result.queue)
     .bind(due)

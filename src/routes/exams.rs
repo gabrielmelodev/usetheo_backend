@@ -105,7 +105,7 @@ async fn create(
         r#"insert into exams
            (user_id, name, plan_mode, exam_date, sprint_days, weekly_hours, continuous_mode,
             max_session_minutes, review_intervals_days, excluded_weekdays)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, '{}'))
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, '[]'))
            returning *"#,
     )
     .bind(user.id)
@@ -116,8 +116,8 @@ async fn create(
     .bind(payload.weekly_hours)
     .bind(&payload.continuous_mode)
     .bind(payload.max_session_minutes)
-    .bind(&payload.review_intervals_days)
-    .bind(&payload.excluded_weekdays)
+    .bind(payload.review_intervals_days.as_ref().map(serde_json::to_value).transpose().unwrap_or(None))
+    .bind(payload.excluded_weekdays.as_ref().map(serde_json::to_value).transpose().unwrap_or(None))
     .fetch_one(&state.db)
     .await?;
 
@@ -135,12 +135,21 @@ async fn update(
         validate_plan_mode(&payload)?;
     }
 
+    let review_intervals = payload.review_intervals_days
+        .or_else(|| {
+            let v = existing.review_intervals();
+            if v.is_empty() { None } else { Some(v) }
+        })
+        .map(|v| serde_json::to_value(v).unwrap_or_else(|_| serde_json::json!([])));
+    let excluded_weekdays = payload.excluded_weekdays
+        .map(|v| serde_json::to_value(v).unwrap_or_else(|_| serde_json::json!([])));
+
     let exam = sqlx::query_as::<_, Exam>(
         r#"update exams set
              name = $1, plan_mode = $2, exam_date = $3, sprint_days = $4,
              weekly_hours = $5, continuous_mode = $6, max_session_minutes = $7,
              review_intervals_days = $8, excluded_weekdays = coalesce($9, excluded_weekdays),
-             updated_at = now()
+             updated_at = CURRENT_TIMESTAMP
            where id = $10
            returning *"#,
     )
@@ -151,8 +160,8 @@ async fn update(
     .bind(payload.weekly_hours.or(existing.weekly_hours))
     .bind(payload.continuous_mode.or(existing.continuous_mode))
     .bind(payload.max_session_minutes.or(existing.max_session_minutes))
-    .bind(payload.review_intervals_days.or(existing.review_intervals_days))
-    .bind(payload.excluded_weekdays)
+    .bind(review_intervals)
+    .bind(excluded_weekdays)
     .bind(id)
     .fetch_one(&state.db)
     .await?;
@@ -226,7 +235,7 @@ async fn update_subject(
 
     let subject = sqlx::query_as::<_, ExamSubject>(
         r#"update exam_subjects set
-             name = $1, weight = coalesce($2, weight), knowledge_factor = coalesce($3, knowledge_factor), updated_at = now()
+             name = $1, weight = coalesce($2, weight), knowledge_factor = coalesce($3, knowledge_factor), updated_at = CURRENT_TIMESTAMP
            where id = $4 returning *"#,
     )
     .bind(&payload.name)
@@ -342,7 +351,7 @@ async fn update_topic(
     let topic = sqlx::query_as::<_, ExamTopic>(
         r#"update exam_topics set
              subject_id = $1, parent_topic_id = $2, number = $3, title = $4,
-             relevance = coalesce($5, relevance), in_sprint = coalesce($6, in_sprint), updated_at = now()
+             relevance = coalesce($5, relevance), in_sprint = coalesce($6, in_sprint), updated_at = CURRENT_TIMESTAMP
            where id = $7 returning *"#,
     )
     .bind(payload.subject_id)
@@ -386,15 +395,23 @@ async fn download_template() -> AppResult<impl IntoResponse> {
     sheet
         .write_string(0, 0, "Cargo / Órgão / Ano")
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+
     sheet
         .write_string(1, 0, "Matéria")
         .and_then(|s| s.write_string(1, 1, "Ponto"))
         .and_then(|s| s.write_string(1, 2, "Peso (1-5)"))
         .and_then(|s| s.write_string(1, 3, "Observação"))
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+
     sheet
         .write_string(2, 0, "Direito Administrativo")
-        .and_then(|s| s.write_string(2, 1, "1. Ato administrativo: conceito e atributos"))
+        .and_then(|s| {
+            s.write_string(
+                2,
+                1,
+                "1. Ato administrativo: conceito e atributos",
+            )
+        })
         .and_then(|s| s.write_number(2, 2, 4.0))
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
 
@@ -404,8 +421,14 @@ async fn download_template() -> AppResult<impl IntoResponse> {
 
     Ok((
         [
-            (header::CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-            (header::CONTENT_DISPOSITION, "attachment; filename=\"modelo-edital.xlsx\""),
+            (
+                header::CONTENT_TYPE,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"modelo-edital.xlsx\"",
+            ),
         ],
         Bytes::from(bytes),
     ))
@@ -456,7 +479,7 @@ async fn import_xlsx(
     let _headers = rows.next(); // linha 2, só cabeçalhos, ignorada no parse
 
     let exam = sqlx::query_as::<_, Exam>(
-        "insert into exams (user_id, name, plan_mode, excluded_weekdays) values ($1, $2, 'free', '{}') returning *",
+        "insert into exams (user_id, name, plan_mode, excluded_weekdays) values ($1, $2, 'free', '[]') returning *",
     )
     .bind(user.id)
     .bind(&exam_name)

@@ -52,24 +52,16 @@ async fn topics_with_markers(State(state): State<AppState>, user: CurrentUser, P
     let rows: Vec<TopicMarker> = sqlx::query_as(
         r#"select
              t.id, t.subject_id, t.number, t.title, t.relevance, t.in_sprint, t.scheduled_date,
-             case when l.log_count > 0 then 'studied' else 'not_started' end as status,
-             l.first_studied_on,
-             l.last_log_on,
-             coalesce(l.log_count, 0) as log_count,
-             r.scheduled_date as next_review_date,
-             r.step as next_review_step,
-             case when r.scheduled_date is not null and r.scheduled_date < $2
-                  then ($2::date - r.scheduled_date)::int else null end as review_overdue_days
+             case when (select count(*) from study_logs where topic_id = t.id) > 0 then 'studied' else 'not_started' end as status,
+             (select min(studied_on) from study_logs where topic_id = t.id) as first_studied_on,
+             (select max(studied_on) from study_logs where topic_id = t.id) as last_log_on,
+             (select count(*) from study_logs where topic_id = t.id) as log_count,
+             (select scheduled_date from topic_reviews where topic_id = t.id and completed_at is null and skipped = false order by scheduled_date asc limit 1) as next_review_date,
+             (select step from topic_reviews where topic_id = t.id and completed_at is null and skipped = false order by scheduled_date asc limit 1) as next_review_step,
+             case when (select scheduled_date from topic_reviews where topic_id = t.id and completed_at is null and skipped = false order by scheduled_date asc limit 1) is not null
+                  and (select scheduled_date from topic_reviews where topic_id = t.id and completed_at is null and skipped = false order by scheduled_date asc limit 1) < $2
+                  then CAST(julianday($2) - julianday((select scheduled_date from topic_reviews where topic_id = t.id and completed_at is null and skipped = false order by scheduled_date asc limit 1)) AS INTEGER) else null end as review_overdue_days
            from exam_topics t
-           left join lateral (
-             select count(*) as log_count, min(studied_on) as first_studied_on, max(studied_on) as last_log_on
-             from study_logs where topic_id = t.id
-           ) l on true
-           left join lateral (
-             select scheduled_date, step from topic_reviews
-             where topic_id = t.id and completed_at is null and skipped = false
-             order by scheduled_date asc limit 1
-           ) r on true
            where t.exam_id = $1
            order by t.position"#,
     )
@@ -133,7 +125,7 @@ async fn stats(State(state): State<AppState>, user: CurrentUser, Path(id): Path<
     }
 
     let performance: Vec<SubjectPerformance> = sqlx::query_as::<_, (Uuid, String, Option<i64>, Option<i64>)>(
-        r#"select s.id, s.name, sum(l.questions_total)::bigint, sum(l.questions_correct)::bigint
+        r#"select s.id, s.name, sum(l.questions_total), sum(l.questions_correct)
            from exam_subjects s
            join exam_topics t on t.subject_id = s.id
            left join study_logs l on l.topic_id = t.id

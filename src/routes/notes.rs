@@ -50,6 +50,7 @@ async fn create(
     }
 
     let mut tx = state.db.begin().await?;
+    let tags_json = serde_json::to_value(&payload.tags).unwrap_or_else(|_| serde_json::json!([]));
 
     let note: Note = sqlx::query_as(
         "insert into notes (user_id, deck_id, note_type_id, fields, tags) values ($1, $2, $3, $4, $5) returning *",
@@ -58,7 +59,7 @@ async fn create(
     .bind(payload.deck_id)
     .bind(payload.note_type_id)
     .bind(&payload.fields)
-    .bind(&payload.tags)
+    .bind(&tags_json)
     .fetch_one(&mut *tx)
     .await?;
 

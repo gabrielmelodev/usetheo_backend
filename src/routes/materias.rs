@@ -152,7 +152,7 @@ async fn clone_materia(
         for card in source_cards {
             sqlx::query(
                 r#"insert into cards (user_id, note_id, deck_id, template_index, queue, due)
-                   values ($1, $2, $3, $4, 'new', now())"#,
+                   values ($1, $2, $3, $4, 'new', CURRENT_TIMESTAMP)"#,
             )
             .bind(user.id)
             .bind(new_note_id)

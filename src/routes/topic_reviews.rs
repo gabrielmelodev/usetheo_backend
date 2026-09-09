@@ -48,11 +48,11 @@ async fn due(
     let rows: Vec<DueReview> = sqlx::query_as(
         r#"select r.id, r.topic_id, t.exam_id, t.number as topic_number, t.title as topic_title,
                   r.step, r.scheduled_date,
-                  greatest(0, ($1::date - r.scheduled_date))::int as days_overdue
+                  CAST(MAX(0, julianday($1) - julianday(r.scheduled_date)) AS INTEGER) as days_overdue
            from topic_reviews r
            join exam_topics t on t.id = r.topic_id
            where r.user_id = $2 and r.completed_at is null and r.skipped = false
-             and ($3::uuid is null or t.exam_id = $3)
+             and ($3 is null or t.exam_id = $3)
            order by r.scheduled_date asc"#,
     )
     .bind(today)

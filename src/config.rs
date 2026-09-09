@@ -3,6 +3,7 @@ use std::env;
 #[derive(Clone)]
 pub struct Config {
     pub database_url: String,
+    pub remote_database_url: String,
 
     pub jwt_secret: String,
 
@@ -10,6 +11,10 @@ pub struct Config {
 
     pub refresh_token_ttl_days: i64,
 
+    pub email_enabled: bool,
+    pub offline_mode: bool,
+
+    pub host: String,
     pub port: u16,
 
     // Resend
@@ -36,6 +41,10 @@ impl Config {
             // ============================================================
 
             database_url: env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "sqlite://study_app.db?mode=rwc".to_string()
+            }),
+
+            remote_database_url: env::var("REMOTE_DATABASE_URL").unwrap_or_else(|_| {
                 "postgres://postgres:postgres@localhost/theo_dev".to_string()
             }),
 
@@ -58,9 +67,19 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30),
 
+            email_enabled: env::var("EMAIL_ENABLED")
+                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                .unwrap_or(false),
+
+            offline_mode: env::var("OFFLINE_MODE")
+                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                .unwrap_or(false),
+
             // ============================================================
             // SERVER
             // ============================================================
+
+            host: env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
 
             port: env::var("PORT")
                 .ok()

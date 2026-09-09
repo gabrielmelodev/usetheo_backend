@@ -8,7 +8,7 @@ pub fn router() -> Router<AppState> {
 async fn me(State(state): State<AppState>, user: CurrentUser) -> AppResult<Json<UserPublic>> {
     let db_user: User = sqlx::query_as("select * from users where id = $1")
         .bind(user.id)
-        .fetch_one(&state.db)
+        .fetch_one(&state.remote_db)
         .await?;
 
     Ok(Json(UserPublic::from(&db_user)))

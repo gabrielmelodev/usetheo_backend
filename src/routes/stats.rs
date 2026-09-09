@@ -12,6 +12,7 @@ use axum::{
 };
 
 use serde::Serialize;
+use chrono::{Duration, Utc};
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/overview", get(overview))
@@ -56,7 +57,7 @@ async fn overview(
         SELECT COUNT(*)
         FROM cards
         WHERE user_id = $1
-          AND due <= NOW()
+          AND due <= CURRENT_TIMESTAMP
         "#,
     )
     .bind(user.id)
@@ -68,10 +69,11 @@ async fn overview(
         SELECT COUNT(*)
         FROM review_logs
         WHERE user_id = $1
-          AND reviewed_at >= NOW() - INTERVAL '7 days'
+          AND reviewed_at >= $2
         "#,
     )
     .bind(user.id)
+    .bind(Utc::now() - Duration::days(7))
     .fetch_one(&state.db)
     .await?;
 
